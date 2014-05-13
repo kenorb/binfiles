@@ -1,0 +1,6 @@
+[submodule "imdb-cli"]
+	path = imdb-cli
+	url = https://github.com/bgr/imdb-cli
+[submodule "gsrchDwn"]
+	path = gsrchDwn
+	url = https://github.com/kenorb/gsrchDwn
