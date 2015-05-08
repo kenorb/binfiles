@@ -1,0 +1,74 @@
+#!/bin/bash
+type seq || { echo >&2 "Seq command is required. Aborting."; exit 1; }
+type curl || { echo >&2 "Curl is required. Aborting."; exit 1; }
+type gunzip || { echo >&2 "Gzip is required. Aborting."; exit 1; }
+type convert || { echo >&2 "Image Magick is required. Aborting."; exit 1; }
+type ex || { echo >&2 "Ex editor is required. Aborting."; exit 1; }
+: ${1?"Usage: $0 (url)"}
+
+# Few helpful functions.
+next() { echo $1; }
+rest() { shift; echo $*; }
+sprintf() { local stdin; read -d '' -u 0 stdin; printf "$@" "$stdin"; }
+clean-up() { printf 'Cleaning up... ' rm -r "$TMPDIR" echo "done." }
+trap 'echo; clean-up; exit 1' SIGINT SIGTERM
+
+TMPDIR=".${0##*/}-$$" && mkdir -v "$TMPDIR"
+#TMPDIR=".scribd-dl-71798"
+
+html=$(curl -A Mozilla "$1") || exit 1
+#html=$(cat test2.html) || exit 1
+
+# Determine PDF file name based on the title.
+filename="${html#*<title>}"
+filename="${filename%%</title>*}"
+filename="${filename//\//-}"
+
+# Get prefix id.
+regexPrefix="docManager.assetPrefix = \""
+prefix="${html#*$regexPrefix}"
+prefix="${prefix%%\"*}"
+
+# Get content page URLs.
+urls=$(echo $html | grep -o '"[^" ]\+.jsonp"' | tr -d '"')
+totalPages=$(c() { echo $#; }; c $urls)
+echo "Found $totalPages pages. Downloading pages..."
+
+# Download pages.
+for i in `seq -w 1 $totalPages`; do
+  url=$(next $urls)
+  filename="page-$i-$(basename $url)"
+  wget -O "$TMPDIR/$filename.gz" -c --user-agent=Mozilla $url || exit 1
+  urls=$(rest $urls) # Remove first URL from the list.
+done
+
+# Uncompress gzip files.
+ls $TMPDIR/*.gz && gunzip -fv $TMPDIR/*.gz
+
+# Download images.
+images=$(grep -oh '[^"]*images/[^"]*' $TMPDIR/*.jsonp | sort | uniq | tr -d \\)
+mkdir -v $TMPDIR/images
+#wget -P "$TMPDIR/images" -c --user-agent=Mozilla $images
+
+# Parse content pages.
+grep -oh '".*"' $TMPDIR/*.jsonp |
+  while read -r line; do
+    line="${line%\"}" # Remove first double-quote.
+    line="${line#\"}" # Remove last double-quote.
+    echo -e $line | sprintf
+  done > "$TMPDIR/$filename.html"
+ex +'%s/http:.*\zeimages[^"]*//g' +'%s/orig=/src=/g' +"w! $TMPDIR/page.html" -cwq "$TMPDIR/$filename.html"
+
+#if ! convert "$WORKINGDIR/$file.jpg" "$WORKINGDIR/$file.pdf"; then
+#  printf '%s\n' "error." "Could not convert \"$WORKINGDIR/$file.jpg\" to PDF."
+#  clean-up
+#  exit 1
+#fi
+
+#printf 'Combining all PDF files to one file... '
+#pdftk "$WORKINGDIR/"*".pdf" cat output "$WORKINGDIR/$filename.pdf" || exit 1
+#mv -v "$WORKINGDIR/$filename.pdf" "$filename.pdf"
+
+echo "$(($(stat --printf '%s' "$TMPDIR/$filename.pdf") / 1024)) KB."
+echo "PDF file saved as \"$filename.pdf\"."
+clean-up
