@@ -4,20 +4,27 @@ type curl || { echo >&2 "Curl is required. Aborting."; exit 1; }
 type gunzip || { echo >&2 "Gzip is required. Aborting."; exit 1; }
 type convert || { echo >&2 "Image Magick is required. Aborting."; exit 1; }
 type ex || { echo >&2 "Ex editor is required. Aborting."; exit 1; }
+type awk || { echo >&2 "Awk is required. Aborting."; exit 1; }
+type sed || { echo >&2 "Sed is required. Aborting."; exit 1; }
+type tee || { echo >&2 "Tee is required. Aborting."; exit 1; }
 : ${1?"Usage: $0 (url)"}
 
 # Few helpful functions.
 next() { echo $1; }
 rest() { shift; echo $*; }
 sprintf() { local stdin; read -d '' -u 0 stdin; printf "$@" "$stdin"; }
-clean-up() { printf 'Cleaning up... ' rm -r "$TMPDIR" echo "done." }
-trap 'echo; clean-up; exit 1' SIGINT SIGTERM
+clean-up() { cd -; printf "Cleaning up... "; rm -r "$TMPDIR" && echo "done."; }
 
 TMPDIR=".${0##*/}-$$" && mkdir -v "$TMPDIR"
-#TMPDIR=".scribd-dl-71798"
+TMPDIR=".scribd-dl-34373"
+cd "$TMPDIR"
+#trap 'echo; clean-up; exit 1' SIGINT SIGTERM
 
-html=$(curl -A Mozilla "$1") || exit 1
-#html=$(cat test2.html) || exit 1
+# Download the main page.
+PAGE="page.html"
+html=$(curl -LA Mozilla "$1" | tee $PAGE) || exit 1
+html=$(cat $PAGE)
+cp -vf $PAGE $PAGE.org
 
 # Determine PDF file name based on the title.
 filename="${html#*<title>}"
@@ -29,35 +36,103 @@ regexPrefix="docManager.assetPrefix = \""
 prefix="${html#*$regexPrefix}"
 prefix="${prefix%%\"*}"
 
-# Get content page URLs.
-urls=$(echo $html | grep -o '"[^" ]\+.jsonp"' | tr -d '"')
-totalPages=$(c() { echo $#; }; c $urls)
-echo "Found $totalPages pages. Downloading pages..."
+## Parse html page.
+ex -V1 $PAGE <<-EOF
+  " Correcting missing protocol, see: https://github.com/wkhtmltopdf/wkhtmltopdf/issues/2359 "
+  %s,'//,'http://,ge
+  %s,"//,"http://,ge
+  " Correcting relative paths, see: https://github.com/wkhtmltopdf/wkhtmltopdf/issues/2359 "
+  %s,[^,]\zs'/\ze[^>],'http://www.scribd.com/,ge
+  %s,[^,]\zs"/\ze[^>],"http://www.scribd.com/,ge
+  " Remove the margin on the left of the main block. "
+  %s/id="doc_container"/id="doc_container" style="min-width:0px;margin-left : 0px;"/g
+  %s/<div class="outer_page/<div style="margin: 0px;" class="outer_page/g
+  " Remove useless html elements. "
+  /<div.*id="global_header"/norm nvatd
+  /<div class="header_spacer"/norm nvatd
+  /<div.*id="doc_info"/norm nvatd
+  /<div.*class="toolbar_spacer"/norm nvatd
+  /<div.*between_page_ads_1/norm nvatd
+  /id="leaderboard_ad_main">/norm nvatd
+  /class="page_missing_explanation/norm nvatd
+  /<div id="between_page_ads/norm nvatd
+  /<div class="b_..">/norm nvatd
+  /<div class="buy_doc_bar/norm nvatd
+  /<div class="shadow_overlay">/norm nvatd
+  /grab_blur_promo_here/norm nvatd
+  /missing_page_buy_button/norm nvatd
+  wq " Update changes and quit.
+EOF
 
-# Download pages.
-for i in `seq -w 1 $totalPages`; do
-  url=$(next $urls)
-  filename="page-$i-$(basename $url)"
-  wget -O "$TMPDIR/$filename.gz" -c --user-agent=Mozilla $url || exit 1
-  urls=$(rest $urls) # Remove first URL from the list.
-done
+function remove_node {
+  # $1 is the node regexp string
+  # $2 is the file
+  node_regex=$1
+  filename=$2
+  commande="{if(!i && /${node_regex}/){i=1}else{if(i){if(/<div/){i++} if(/<\/div>/){i--}}else{if(!i){print \$0}} }}"
+  output=$(awk "$commande" "$filename") && echo "$output" > "$filename"
+}
 
-# Uncompress gzip files.
-ls $TMPDIR/*.gz && gunzip -fv $TMPDIR/*.gz
+function remove_n_node {
+  # $1 is the node regexp string
+  # $2 is the file
+  node_regex=$1
+  filename=$2
+  n=$3
+  commande="BEGIN {l=${n}} {if( !i && l>0 && /${node_regex}/ ){i=1;l--}else{if(i){if(/<div/){i++} if(/<\/div>/){i--}}else{if(!i){print \$0}} }}"
+  output=$(awk "$commande" "$filename") && echo "$output" > "$filename"
+}
 
-# Download images.
-images=$(grep -oh '[^"]*images/[^"]*' $TMPDIR/*.jsonp | sort | uniq | tr -d \\)
-mkdir -v $TMPDIR/images
+function keep_n_node {
+  # $1 is the node regexp string
+  # $2 is the file
+  node_regex=$1
+  filename=$2
+  n=$3
+  commande="BEGIN {l=${n}} {if(l > 0 && /${node_regex}/ ){l--;print \$0}else{if(!i && /${node_regex}/ ){i=1;l--}else{if(i){if(/<div/){i++} if(/<\/div>/){i--}}else{if(!i){print \$0}} }}}"
+  output=$(awk "$commande" "$filename") && echo "$output" > "$filename"
+}
+
+function remove_errors {
+  filename=$1
+  output=$(awk '/</{i++}i' "$filename")
+  echo $output
+  exit
+  echo "$output" > "$filename"
+}
+
+## We remove all html elements which are useless (such as menus)
+#remove_errors $PAGE
+
+## Get content page URLs.
+#urls=$(echo $html | grep -o '"[^" ]\+.jsonp"' | tr -d '"')
+#totalPages=$(c() { echo $#; }; c $urls)
+#echo "Found $totalPages pages. Downloading pages..."
+
+## Download pages.
+#for i in `seq -w 1 $totalPages`; do
+#  url=$(next $urls)
+#  filename="page-$i-$(basename $url)"
+#  wget -O "$TMPDIR/$filename.gz" -c --user-agent=Mozilla $url || exit 1
+#  urls=$(rest $urls) # Remove first URL from the list.
+#done
+
+## Uncompress gzip files.
+#ls $TMPDIR/*.gz && gunzip -fv $TMPDIR/*.gz
+
+## Download images.
+#images=$(grep -oh '[^"]*images/[^"]*' $TMPDIR/*.jsonp | sort | uniq | tr -d \\)
+#mkdir -v $TMPDIR/images
 #wget -P "$TMPDIR/images" -c --user-agent=Mozilla $images
 
-# Parse content pages.
-grep -oh '".*"' $TMPDIR/*.jsonp |
-  while read -r line; do
-    line="${line%\"}" # Remove first double-quote.
-    line="${line#\"}" # Remove last double-quote.
-    echo -e $line | sprintf
-  done > "$TMPDIR/$filename.html"
-ex +'%s/http:.*\zeimages[^"]*//g' +'%s/orig=/src=/g' +"w! $TMPDIR/page.html" -cwq "$TMPDIR/$filename.html"
+## Parse content pages.
+#grep -oh '".*"' $TMPDIR/*.jsonp |
+#  while read -r line; do
+#    line="${line%\"}" # Remove first double-quote.
+#    line="${line#\"}" # Remove last double-quote.
+#    echo -e $line | sprintf
+#  done > "$TMPDIR/$filename.html"
+#ex +'%s/http:.*\zeimages[^"]*//g' +'%s/orig=/src=/g' "$TMPDIR/$filename.html"
 
 #if ! convert "$WORKINGDIR/$file.jpg" "$WORKINGDIR/$file.pdf"; then
 #  printf '%s\n' "error." "Could not convert \"$WORKINGDIR/$file.jpg\" to PDF."
@@ -69,6 +144,6 @@ ex +'%s/http:.*\zeimages[^"]*//g' +'%s/orig=/src=/g' +"w! $TMPDIR/page.html" -cw
 #pdftk "$WORKINGDIR/"*".pdf" cat output "$WORKINGDIR/$filename.pdf" || exit 1
 #mv -v "$WORKINGDIR/$filename.pdf" "$filename.pdf"
 
-echo "$(($(stat --printf '%s' "$TMPDIR/$filename.pdf") / 1024)) KB."
-echo "PDF file saved as \"$filename.pdf\"."
-clean-up
+#echo "$(($(stat --printf '%s' "$TMPDIR/$filename.pdf") / 1024)) KB."
+#echo "PDF file saved as '$filename.pdf'."
+#clean-up
