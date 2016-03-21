@@ -4,3 +4,6 @@
 [submodule "gsrchDwn"]
 	path = gsrchDwn
 	url = https://github.com/kenorb/gsrchDwn
+[submodule "dtruss-lamp"]
+	path = dtruss-lamp
+	url = https://github.com/kenorb/dtruss-lamp.git
