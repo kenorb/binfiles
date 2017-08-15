@@ -85,7 +85,7 @@ if ($want_alias eq 'r') {
     print "use Mac::Files qw( NewAliasMinimal );\n";
 }
 if ($want_alias eq 'p') {
-    print "use Mac::Alias::Parse qw( pack_alias );   # Pure-Perl alias record\n";
+    print "use Mac::Alias::Parse qw( packAliasRec );   # Pure-Perl alias record\n";
 }
 if ($want_plist eq 'p') {
     print "use Mac::PropertyList::WriteBinary qw ( );"
@@ -213,7 +213,7 @@ sub as_resolved_alias {
 sub as_parsed_alias {
     my($pict) = @_;
     
-    my($parsed) = Mac::Alias::Parse::unpack_alias($pict);
+    my($parsed) = Mac::Alias::Parse::unpackAliasRec($pict);
     my(@keys) = sort { $a cmp $b } keys %$parsed;
     my($dumper) = Data::Dumper->new([ @{$parsed}{@keys} ]);
     $dumper->Pad( ' ' x 12 );
@@ -230,7 +230,7 @@ sub as_parsed_alias {
         $s .= ",\n" if $ix < $#keys;
         $result .= $s;
     }
-    return "BKGD_alias => &pack_alias(\n$result)";
+    return "BKGD_alias => &packAliasRec(\n$result)";
 }
 
 sub as_bplist {
