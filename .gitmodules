@@ -4,3 +4,12 @@
 [submodule "imdb-cli"]
 	path = imdb-cli
 	url = https://github.com/kenorb/imdb-cli
+[submodule "VirusTotalApi"]
+	path = VirusTotalApi
+	url = https://github.com/kenorb/VirusTotalApi
+[submodule "diff2html"]
+	path = diff2html
+	url = https://github.com/doloopwhile/diff2html
+[submodule "diff2html2"]
+	path = diff2html2
+	url = http://git.droids-corp.org/diff2html.git
