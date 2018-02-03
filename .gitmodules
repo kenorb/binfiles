@@ -13,3 +13,6 @@
 [submodule "diff2html2"]
 	path = diff2html2
 	url = http://git.droids-corp.org/diff2html.git
+[submodule "dtruss-lamp"]
+	path = dtruss-lamp
+	url = https://github.com/kenorb/dtruss-lamp.git

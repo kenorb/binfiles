@@ -1,0 +1,10 @@
+#!/bin/sh
+type wkhtmltopdf || { echo >&2 "wkhtmltopdf command is required. Aborting."; exit 1; }
+: ${1?"Usage: $0 (url)"}
+URL=$1 && shift
+HOST=$(echo $URL | egrep -o "([.[:alnum:]]*?)\.(com|net|org)" | head -c-5)
+QID=$(echo $URL | grep -o "\d.*/" | head -c-2)
+PRINTURL="http://www.stackprinter.com/export?format=HTML&printer=true&service=$HOST&question=$QID"
+FILENAME=$(curl -s $URL | grep -o "<title>[^<]*" | tail -c+8)
+echo "URL: $PRINTURL" >&2
+wkhtmltopdf $* $PRINTURL "$FILENAME.pdf" && echo "'$FILENAME.pdf' saved."

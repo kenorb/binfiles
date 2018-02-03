@@ -1,0 +1,7 @@
+#!/bin/sh
+# Script to convert URL into PDF using wkhtmltopdf tool.
+type wkhtmltopdf || { echo >&2 "wkhtmltopdf command is required. Aborting."; exit 1; }
+: ${1?"Usage: $0 (url)"}
+URL=$1 && shift
+FILENAME=$(curl -s $URL | grep -o "<title>[^<]*" | tail -c+8)
+wkhtmltopdf $* $URL "$FILENAME.pdf" && echo "'$FILENAME.pdf' saved."
